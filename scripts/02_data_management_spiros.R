@@ -18,11 +18,9 @@ library(tidyr)
 
 # Import data ----
 data_quali <- readRDS("data/tmp/data_qualit.rds")
-data_spiro_Grenoble <- read_delim("data/Spiros/Spiromètrie_Grenoble_250902/Export spiro 140825.csv",delim = ";", escape_double = FALSE, trim_ws = TRUE, show_col_types = FALSE)
-data_spiro_autre <- read_excel("data/Spiros/Spiros_EGEA4_250902.xlsx")
-load("~/Documents/Projets/EGEA/EGEA_4/EGEA4_control_spiros/data/data_ecrf/ecrf_alicia_250902.rdata")
-data_eCRF <- x
-rm(x)
+data_spiro_Grenoble <- read_delim("data/Spiros/Spiromètrie_Grenoble_251105/Export spiro 10122025.csv",delim = ";", escape_double = FALSE, trim_ws = TRUE, show_col_types = FALSE)
+data_spiro_autre <- read_excel("data/Spiros/Spiros_EGEA4_260108.xlsx")
+data_eCRF <- readRDS("data/data_ecrf/ecrf_alicia_260106.rds")
 
 # Data management ----
 
@@ -58,10 +56,10 @@ data_eCRF_to_merge <- data_eCRF %>%
     Pb_real_eCRF = "129. Problemes_dans_la_realisation_du_test",
     Pb_real_autre_eCRF = "130. Problemes_dans_la_realisation_du_t_Autre",
     Raison_non_fait_eCRF = "131. Si_spiro_non_fait_raison",
-    sexe = "219. Sexe",
-    Best_curve_ARC_eCRF = "280. Numero_de_courbe_retenue",
+    sexe = "220. Sexe",
+    Best_curve_ARC_eCRF = "281. Numero_de_courbe_retenue",
     ddn = "1. Date_de_naissance",
-    visite_faite = "278. non_concerne_pas_de_visite"
+    visite_faite = "279. non_concerne_pas_de_visite"
   ) %>%
   mutate(
     date_CRF = as.Date(date_CRF, format = "%d/%m/%Y"),
@@ -135,7 +133,7 @@ data_spiro_Grenoble_clear <- data_spiro_Grenoble %>%
 
 # Il y a une problème avec le sujet 770118101 qui n'apparait pas dans sqlite général mais uniquement dans
 # le fichier Spiro EXT00157 22052
-data_spiro_Grenoble2 <- read_delim("data/Spiros/Spiromètrie_Grenoble_250902/Spiro EXT00157 220525.csv", 
+data_spiro_Grenoble2 <- read_delim("data/Spiros/Spiromètrie_Grenoble_251105/Spiro EXT00157 220525.csv", 
                                    delim = ";", escape_double = FALSE, trim_ws = TRUE)
 
 data_spiro_Grenoble2 <- data_spiro_Grenoble2 %>%
@@ -188,6 +186,19 @@ data_to_add <- data_spiro_autre %>%
 data_spiro_to_merge <- rbind(data_spiro_to_merge, data_to_add) %>%
   mutate(spiro = 1) 
 
+# 1 Participant de Grenoble pour lequel la spiro a été effectuée en consult de pneumo
+# et donc pour laquelle il faut récupérer les valeurs dans le fichier source Spiro (comme pour les autres centres)
+# et pas dans le CSV envoyé par Joane
+data_710216200 <- data_spiro_autre %>% filter(nodos == 710216200) %>%
+  select(-ID_Alicia) %>%
+  mutate(
+    date_spiro = Date,
+    Centre_spiro = Centre,
+    spiro = 1
+  ) %>%
+  select(colnames(data_spiro_to_merge))
+data_spiro_to_merge <- rbind(data_spiro_to_merge, data_710216200)
+
 # Verif des doublons
 data_spiro_to_merge %>%
   group_by(nodos, Numero_courbe) %>%  
@@ -212,13 +223,27 @@ data <- merge(x = data_spiro_to_merge, y = data_quali_to_merge, by = c("nodos", 
       Centre_eCRF == "Paris" | Centre_spiro == "PARIS" | Centre_quali == "PARIS" ~ "Paris",
       .default = NA
     )
-  )
+  ) %>%
+  filter(!(nodos == 510027200 & Numero_courbe == 5)) # la courbe 5 de ce partiicpant a été ajoutée dans les documents d'analyse de qualité 
+# alors que la courbe n'est pas visible => à supprimer
 
 rm(data_to_add, data_spiro_autre_sansGre, data_spiro_Grenoble_clear,
-   data_eCRF_to_merge, data_quali_to_merge, data_spiro_to_merge)
+   data_eCRF_to_merge, data_quali_to_merge, data_spiro_to_merge,
+   data_710216200)
 
 # Doublons ?
 data %>% group_by(nodos, Numero_courbe) %>% filter(n() > 1) %>% ungroup() %>% nrow # OK
+
+# Incohérence centre ?
+table(data$Centre_eCRF, data$Centre_quali, useNA = "ifany")
+table(data$Centre_eCRF, data$Centre_spiro, useNA = "ifany")
+
+# Incohérence date ?
+table(data$date_CRF == data$date_quali)
+to_check <- data %>% filter(date_CRF != date_quali) %>% select(nodos, date_CRF, date_quali, Centre)
+# Pour 210341200 : date eCRF != date spiro/quali car la spiro a été faite en pneumo et pas pendant la visite EGEA
+
+rm(to_check)
 
 # Calcul %theo et z-score ----
 
@@ -295,24 +320,18 @@ data <- data %>%
 
 data %>% filter(quali == 1 & is.na(spiro)) %>% select(nodos) # OK
 data %>% filter(is.na(quali) & spiro == 1) %>% select(nodos, date_spiro, Centre) %>% distinct 
-# Un participant de Grenoble pour qui on a la spiro en csv 
-# (dans un deuxième fichier Spiro EXT00157 220525) mais pas possible de voir la courbe
 
 ## eCRF vs qualité ----
 
 a <- data %>% filter(eCRF == 1 & is.na(quali)) %>% select(nodos, date_CRF, Centre) %>% distinct
 data %>% filter(is.na(eCRF) & quali == 1) %>% select(nodos, date_quali,date_CRF,date_spiro, Centre) %>% distinct 
-# 5 sujets de Lyon et 1 de Paris 
-
-
 
 ## eCRF vs valeurs spiro ----
 
 b <- data %>% filter(eCRF == 1 & is.na(spiro)) %>% select(nodos, date_CRF, date_spiro, date_quali, Centre) 
-a %>% filter(!nodos %in% b$nodos)
 # b <- data_eCRF %>% filter(nodos %in% a$nodos)
 rm(a, b)
 
 data %>% filter(is.na(eCRF) & spiro == 1) %>% select(nodos, date_spiro, Centre) %>% distinct 
 
-saveRDS(data, "data/data_fin/data_spiros_egea4_20250909.rds")
+saveRDS(data, "data/data_fin/data_spiros_egea4_20260106.rds")

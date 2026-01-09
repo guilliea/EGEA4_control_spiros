@@ -12,7 +12,7 @@ library(tidyr)
 
 # Import data ----
 
-data <- readRDS("data/data_fin/data_spiros_egea4_20250909.rds") %>%
+data <- readRDS("data/data_fin/data_spiros_egea4_20260106.rds") %>%
   mutate(Centre = factor(Centre, levels = c("Paris", "Montpellier", "Lyon", "Marseille", "Grenoble")))
 
 # Data-management ----
@@ -29,15 +29,17 @@ data_unique <- data %>%
 table(data_unique$eCRF == 1 & data_unique$spiro == 1 & data_unique$quali == 1)
 table(data_unique$eCRF == 1 & data_unique$spiro == 1 & is.na(data_unique$quali))
 table(data_unique$eCRF == 1 & is.na(data_unique$spiro) & is.na(data_unique$quali))
+data_unique %>% filter(eCRF == 1 & is.na(spiro) & is.na(quali)) %>% select(Centre) %>% table
 table(data_unique$eCRF == 1 & is.na(data_unique$spiro) & data_unique$quali == 1)
 table(is.na(data_unique$eCRF) & is.na(data_unique$spiro) & data_unique$quali == 1)
 table(is.na(data_unique$eCRF) & data_unique$spiro == 1 & data_unique$quali == 1)
+data_unique %>% filter(is.na(eCRF) & spiro == 1 & quali == 1) %>% select(Centre) %>% table
 table(is.na(data_unique$eCRF) & data_unique$spiro == 1 & is.na(data_unique$quali))
 
 # Export 
 data_unique %>%
   select(nodos, Centre, date_CRF, date_spiro, date_quali, eCRF, spiro, quali) %>%
-  rio::export("data/export/data_export_spiro_250915.xlsx")
+  rio::export("data/export/data_export_spiro_260106.xlsx")
 
 # Stats et analyse qualité ----
 
@@ -173,9 +175,24 @@ n_centre_3repro_good <- data_spiros %>%
   select(nombre_participants) %>% pull
 n_centre_3repro_good
 
+tab <- cbind(levels(data_spiros$Centre), n_centre, n_centre_1good, round(n_centre_1good/n_centre*100, 0),
+             n_centre_2good, round(n_centre_2good/n_centre*100, 0),
+             n_centre_2repro_good, round(n_centre_2repro_good/n_centre*100, 0),
+             n_centre_3good, round(n_centre_3good/n_centre*100, 0),
+             n_centre_3repro_good, round(n_centre_3repro_good/n_centre*100, 0))
+colnames(tab) <- c("Centre", "n total", "n avec ≥1 spiro bonne qualité", "% avec ≥1 spiro bonne qualité", 
+                   "n avec ≥2 spiros bonne qualité", "% avec ≥2 spiros bonne qualité",
+                   "n avec ≥2 spiros bonne qualité et reproductibles", "% avec ≥2 spiros bonne qualité et reproductibles",
+                   "n avec ≥3 spiros bonne qualité", "% avec ≥3 spiros bonne qualité",
+                   "n avec ≥3 spiros bonne qualité et reproductibles", "% avec ≥3 spiros bonne qualité et reproductibles")
+
+rio::export(tab, "res/02_analyse_qualite/Resume_quali_par_centre_20251204.xlsx")
+
 rm(n_1good, n_2good, n_2repro_good, n_3good, n_3repro_good, n_centre,
    n_centre_1good, n_centre_2good, n_centre_2repro_good, n_centre_3good,
-   n_centre_3repro_good)
+   n_centre_3repro_good, tab)
+
+
 
 ## Selon la date d'inclusion ----
 
@@ -329,11 +346,61 @@ p <- ggplot(data=data_barplot, aes(x = valeurs, y = var, fill = time)) +
         legend.text = element_text(size = 10),
         legend.title = element_blank()) # supprimer titre de la légende
 
-ggsave(p, filename = "res/02_analyse_qualite/Qualite_avant_apres_seminaire_20250902.png", dpi = 300, width = 1000, height = 600, scale = 1/90)
+ggsave(p, filename = "res/02_analyse_qualite/Qualite_avant_apres_seminaire_20251007.png", dpi = 300, width = 1000, height = 600, scale = 1/90)
+
+### Par centre ----
+
+data_barplot <- data.frame(
+  var = rep(var_quali, each = 9),
+  centre = rep(n_1good_centre[, 2], 5),
+  time = rep(n_1good_centre[, 1], 5),
+  valeurs = c(n_1good_centre[,3]/n_centre[,3]*100,
+              n_2good_centre[,3]/n_centre[,3]*100,
+              n_2good_repro_centre[,3]/n_centre[,3]*100,
+              n_3good_centre[, 3]/n_centre[,3]*100,
+              n_3good_repro_centre[, 3]/n_centre[,3]*100)
+  ) %>%
+  mutate(var = factor(var, levels = rev(unique(var_quali))),
+         time = factor(time, levels = 1:0, labels = c("Après séminaire", "Avant séminaire")))
+
+# Uniquement en fonction du centre (pas avant vs après sémianire)
+p <- ggplot(data=data_barplot, aes(x = valeurs, y = var, fill = Centre)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  theme_bw(base_size = 10) +
+  ylab("") +
+  xlab("Fréquence (%)") +
+  # Permet d'obtenir une légende dans le même ordre que celui affiché dans le graphique
+  guides(fill = guide_legend(reverse = TRUE)) +
+  scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, 25)) +
+  theme(axis.text.x = element_text(size=10),  
+        axis.text.y = element_text(size = 10, hjust = 0), #hjust permet d'aligner tous les éléments à gauche
+        legend.text = element_text(size = 10),
+        legend.title = element_blank()) # supprimer titre de la légende
+
+p
+
+# Par centre, avant vs après séminaire
+p <- ggplot(data=data_barplot, aes(x = valeurs, y = var, fill = time)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  theme_bw(base_size = 10) +
+  ylab("") +
+  xlab("Fréquence (%)") +
+  facet_grid(. ~ centre, scales = "free")  +
+  # Permet d'obtenir une légende dans le même ordre que celui affiché dans le graphique
+  guides(fill = guide_legend(reverse = TRUE)) +
+  scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, 25)) +
+  theme(axis.text.x = element_text(size=10),  
+        axis.text.y = element_text(size = 10, hjust = 0), #hjust permet d'aligner tous les éléments à gauche
+        legend.text = element_text(size = 10),
+        legend.title = element_blank()) # supprimer titre de la légende
+
+p
+ggsave(p, filename = "res/02_analyse_qualite/Qualite_avant_apres_seminaire_par_centre_20251007.png", dpi = 300, width = 1200, height = 600, scale = 1/90)
 
 rm(data_barplot, n_1good, n_1good_centre, n_2good, n_2good_centre,
    n_2good_repro, n_2good_repro_centre, n_3good, n_3good_centre,
    n_3good_repro, n_3good_repro_centre, p, n_tot, var_quali, n_centre)
+
 
 ## Selon l'âge des patients ----
 
@@ -500,7 +567,7 @@ p <- ggplot(data=data_barplot, aes(x = valeurs, y = var, fill = time)) +
         legend.text = element_text(size = 10),
         legend.title = element_blank()) # supprimer titre de la légende
 
-ggsave(p, filename = "res/02_analyse_qualite/Qualite_selon_age_20250902.png", dpi = 300, width = 1000, height = 600, scale = 1/90)
+ggsave(p, filename = "res/02_analyse_qualite/Qualite_selon_age_20251007.png", dpi = 300, width = 1000, height = 600, scale = 1/90)
 
 rm(data_barplot, n_1good, n_1good_centre, n_2good, n_2good_centre,
    n_2good_repro, n_2good_repro_centre, n_3good, n_3good_centre,

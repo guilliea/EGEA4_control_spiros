@@ -11,7 +11,7 @@ library(haven)
 source("scripts/fonctions.R")
 
 # Import data ----
-data <- read_excel("data/fichiers_comparaison/Verif_spiro_EGEA_Alicia_Nadiia_260108.xlsx") %>%
+data <- read_excel("data/fichiers_comparaison/Verif_spiro_EGEA_Alicia_Nadiia_260204.xlsx") %>%
   filter(!is.na(nodos)) %>%
   mutate(centre = as.factor(centre))
 
